@@ -3,3 +3,5 @@ Garcon.ipr
 Garcon.iws
 
 target/
+/private/
+/src/main/resources/private/
