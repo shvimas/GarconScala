@@ -37,7 +37,7 @@ object Main extends App with StrictLogging with MongoOps {
       case Success(getUpdatesResult) =>
         val maxUpdateId = getUpdatesResult.result.map(_.updateId).fold(-1)(math.max)
         if (maxUpdateId >= 0) {
-          updateOffset(maxUpdateId).awaitResult() match {
+          updateOffset(maxUpdateId + 1).awaitResult() match {
             case Success(res) =>
               require(res.getModifiedCount == 1, s"current update id: $maxUpdateId, offset: $offset")
             case Failure(exception) =>

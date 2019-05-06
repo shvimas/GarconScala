@@ -29,22 +29,25 @@ trait MongoOps {
   protected val usersDataColl: MongoCollection[UserData] =
     garconDb.getCollection(CollName.usersData)
 
-  def getGlobals: Future[Globals] =
+  def getGlobals: Future[Option[Globals]] =
     globalsColl
       .find()
       .first()
-      .toFuture()
+      .toFutureOption()
 
   def updateOffset(offset: Int): Future[UpdateResult] =
     globalsColl
-      .updateOne(
-        filter = emptyBson,
-        update = max(GlobalsFields.offset, offset + 1)
-      )
+      .updateOne(filter = emptyBson, update = max(GlobalsFields.offset, offset))
       .toFuture()
 
   def getOffset: Future[Long] =
-    getGlobals.map(_.offset.getOrElse(0))
+    getGlobals map {
+      case Some(globals) =>
+        globals.offset.getOrElse(0)
+      case None =>
+        updateOffset(0)
+        0
+    }
 
   private def getWordsColl(langDirection: LanguageDirection,
                            chatId: Int): MongoCollection[CommonTranslation] =
