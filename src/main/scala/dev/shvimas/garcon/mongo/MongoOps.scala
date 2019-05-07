@@ -37,7 +37,11 @@ trait MongoOps {
 
   def updateOffset(offset: Int): Future[UpdateResult] =
     globalsColl
-      .updateOne(filter = emptyBson, update = max(GlobalsFields.offset, offset))
+      .updateOne(
+        filter = emptyBson,
+        update = max(GlobalsFields.offset, offset),
+        options = upsert
+      )
       .toFuture()
 
   def getOffset: Future[Long] =
