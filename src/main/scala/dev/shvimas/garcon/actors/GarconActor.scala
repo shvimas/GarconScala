@@ -25,30 +25,11 @@ class GarconActor extends Actor with ActorLogging with MongoOps {
         case Some(text) =>
           update.chatId match {
             case Some(chatId) =>
-              val langDirection: LanguageDirection =
-                getUserData(chatId).awaitResult() match {
-                  case Success(None) =>
-                    log.info(
-                      s"No user data for $chatId found, setting defaults"
-                    )
-                    setDefaultUserData(chatId)
-                    LanguageDirection.default
-                  case Success(Some(userData)) =>
-                    userData.languageDirection match {
-                      case Some(languageDirection) =>
-                        languageDirection
-                      case None =>
-                        setLangDirection(chatId, LanguageDirection.default)
-                        LanguageDirection.default
-                    }
-                  case Failure(exception) =>
-                    log.warning(s"Got ${exception.show}")
-                    LanguageDirection.default
-                }
+              val langDirection: LanguageDirection = getLanguageDirection(chatId).maybeReverse(text)
               lookUpText(text, langDirection, chatId).awaitResult() match {
                 case Success(None) =>
                   // FIXME: translator should return value and all communication should be via GarconActor
-                  translator ! TranslationRequest(message.chat, text)
+                  translator ! TranslationRequest(message.chat, text, langDirection)
                 // TODO: add to DB
                 case Success(Some(commonTranslation)) =>
                   val translationOrCacheError: Option[String] =
@@ -64,7 +45,7 @@ class GarconActor extends Actor with ActorLogging with MongoOps {
                   log.warning(
                     s"Failed to get cached translation for $text: got $exception"
                   )
-                  translator ! TranslationRequest(message.chat, text)
+                  translator ! TranslationRequest(message.chat, text, langDirection)
                 // TODO: add to DB
               }
 
@@ -78,5 +59,27 @@ class GarconActor extends Actor with ActorLogging with MongoOps {
 
     case Update(id, None, Some(callbackQuery)) =>
       log.info(s"Got $callbackQuery from $id")
+  }
+
+  private def getLanguageDirection(chatId: Int): LanguageDirection = {
+    getUserData(chatId).awaitResult() match {
+      case Success(None) =>
+        log.info(
+          s"No user data for $chatId found, setting defaults"
+        )
+        setDefaultUserData(chatId)
+        LanguageDirection.default
+      case Success(Some(userData)) =>
+        userData.languageDirection match {
+          case Some(languageDirection) =>
+            languageDirection
+          case None =>
+            setLangDirection(chatId, LanguageDirection.default)
+            LanguageDirection.default
+        }
+      case Failure(exception) =>
+        log.warning(s"Got ${exception.show}")
+        LanguageDirection.default
+    }
   }
 }

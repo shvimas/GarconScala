@@ -2,15 +2,20 @@ package dev.shvimas.garcon.actors
 
 import akka.actor._
 import dev.shvimas.garcon.actors.MessageSender.SendMessage
+import dev.shvimas.garcon.mongo.model.LanguageDirection
 import dev.shvimas.garcon.telegram.model.Chat
 import dev.shvimas.garcon.translate.abbyy.AbbyyTranslator
-import dev.shvimas.garcon.translate.LanguageCode
 
 import scala.util.{Failure, Success}
 
 object TranslatorActor {
-  case class TranslationRequest(chat: Chat, text: String)
-  case class TranslationResponse(chat: Chat, text: String, translation: String)
+  case class TranslationRequest(chat: Chat,
+                                text: String,
+                                languageDirection: LanguageDirection)
+  case class TranslationResponse(chat: Chat,
+                                 text: String,
+                                 translation: String,
+                                 languageDirection: LanguageDirection)
 }
 
 class TranslatorActor extends Actor with ActorLogging {
@@ -22,13 +27,12 @@ class TranslatorActor extends Actor with ActorLogging {
     context.actorOf(Props[MessageSender], "messageSender")
 
   override def receive: Receive = {
-    case TranslationRequest(chat, text) =>
-      // TODO: support languages
+    case TranslationRequest(chat, text, languageDirection) =>
       val tryTranslation =
         translator.translate(
           text = text,
-          srcLangCode = LanguageCode.EN,
-          dstLangCode = LanguageCode.RU
+          srcLangCode = languageDirection.source,
+          dstLangCode = languageDirection.target
         )
 
       tryTranslation match {
