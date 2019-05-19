@@ -1,7 +1,9 @@
 .idea/
+/.shelf/
 Garcon.ipr
 Garcon.iws
 
 target/
+/logs/
 /private/
 /src/main/resources/private/
