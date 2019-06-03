@@ -53,6 +53,7 @@ object Main extends App with StrictLogging with MongoOps {
 
       case Failure(exception) =>
         logger.error(exception.toString)
+        exception.printStackTrace()
     }
 
     Thread.sleep(math.max(0, minWorkingDuration.toMillis - started))
