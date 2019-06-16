@@ -2,12 +2,15 @@ package dev.shvimas.garcon.actors
 
 import akka.actor.typed._
 import akka.actor.typed.scaladsl._
+import cats.syntax.show._
 import dev.shvimas.garcon.actors.MongoActor.Request
 import dev.shvimas.garcon.mongo.model.{LanguageDirection, UserData}
 import dev.shvimas.garcon.mongo.MongoOps
+import dev.shvimas.garcon.translate.Translation
+import dev.shvimas.garcon.utils.ExceptionUtils.showThrowable
 
 import scala.concurrent.ExecutionContextExecutor
-import scala.util.Try
+import scala.util.{Failure, Success, Try}
 
 object MongoActor {
   sealed trait Request
@@ -16,11 +19,11 @@ object MongoActor {
                                   replyTo: ActorRef[Try[LanguageDirection]])
       extends Request
 
-//  case class AddText(translation: Translation,
-//                     languageDirection: LanguageDirection,
-//                     chatId: Int)
-//      extends Request
-//
+  case class AddTranslation(translation: Translation,
+                            languageDirection: LanguageDirection,
+                            chatId: Int)
+      extends Request
+
 //  case class LookUpText(text: String,
 //                        languageDirection: LanguageDirection,
 //                        chatId: Int)
@@ -69,6 +72,15 @@ class MongoActor(context: ActorContext[Request])
             }
 
           replyTo ! triedLanguageDirection
+        }
+      case request @ AddTranslation(translation, languageDirection, chatId) =>
+        addText(translation, languageDirection, chatId).onComplete {
+          case Success(updateResult) =>
+            if (!updateResult.wasAcknowledged()) {
+              log.error(s"$request was not acknowledged")
+            }
+          case Failure(exception) =>
+            log.error(exception.show)
         }
     }
     Behaviors.same

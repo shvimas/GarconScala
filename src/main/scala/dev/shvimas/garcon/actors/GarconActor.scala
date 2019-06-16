@@ -7,7 +7,7 @@ import akka.actor.Scheduler
 import akka.util.Timeout
 import cats.syntax.show._
 import dev.shvimas.garcon.actors.MessageSender.SendMessage
-import dev.shvimas.garcon.actors.MongoActor.GetLanguageDirection
+import dev.shvimas.garcon.actors.MongoActor._
 import dev.shvimas.garcon.actors.TranslatorActor._
 import dev.shvimas.garcon.mongo.model.LanguageDirection
 import dev.shvimas.garcon.telegram.model.Update
@@ -98,6 +98,7 @@ class GarconActor(context: ActorContext[Update])
           case Success(TranslationResponse(_, tried)) =>
             tried match {
               case Success(translation) =>
+                mongoActor ! AddTranslation(translation, languageDirection, chatId)
                 translation.translatedText
               case Failure(exception) =>
                 log.error(exception.show)
