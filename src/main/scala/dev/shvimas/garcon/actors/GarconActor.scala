@@ -77,7 +77,7 @@ class GarconActor(context: ActorContext[Update])
             val languageDirection = ld.maybeReverse(text)
             translate(text, chatId, languageDirection)
           case Failure(exception) =>
-            logException(exception)
+            log.error(exception.show)
         }
       }
   }
@@ -100,20 +100,15 @@ class GarconActor(context: ActorContext[Update])
               case Success(translation) =>
                 translation.translatedText
               case Failure(exception) =>
-                logException(exception)
+                log.error(exception.show)
                 exception.show
             }
           case Failure(exception) =>
-            logException(exception)
+            log.error(exception.show)
             exception.show
         }
 
       messageSender ! SendMessage(chatId, Some(answer))
     }
-  }
-
-  private def logException(exception: Throwable): Unit = {
-    log.error(exception.toString)
-    exception.printStackTrace()
   }
 }

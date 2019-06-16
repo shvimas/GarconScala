@@ -3,11 +3,13 @@ package dev.shvimas.garcon
 import java.util.concurrent.TimeUnit
 
 import akka.actor.typed._
+import cats.syntax.show._
 import com.typesafe.config.{Config, ConfigFactory}
 import com.typesafe.scalalogging.StrictLogging
 import dev.shvimas.garcon.actors.GarconActor
 import dev.shvimas.garcon.mongo.MongoOps
 import dev.shvimas.garcon.telegram.model.Update
+import dev.shvimas.garcon.utils.ExceptionUtils.showThrowable
 import dev.shvimas.garcon.utils.FutureUtils._
 
 import scala.concurrent.duration.Duration
@@ -51,7 +53,7 @@ object Main extends App with StrictLogging with MongoOps {
           .foreach(_.foreach((update: Update) => garconActor ! update))
 
       case Failure(exception) =>
-        logger.error(exception.toString)
+        logger.error(exception.show)
         exception.printStackTrace()
     }
 
