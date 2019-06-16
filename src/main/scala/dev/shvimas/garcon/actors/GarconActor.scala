@@ -29,13 +29,13 @@ class GarconActor(context: ActorContext[Update])
 
   private implicit val executor: ExecutionContextExecutor =
     context.executionContext
-  private implicit val scheduler: Scheduler = context.system.scheduler
+  implicit val scheduler: Scheduler = context.system.scheduler
 
   private val messageSender =
     context.spawn(MessageSender(), "messageSender")
 
-  private val translator =
-    context.spawn(TranslatorActor.abbyyTranslator(), "ABBYY_translator")
+  private val yandexTranslator =
+    context.spawn(TranslatorActor.yandexTranslator(), "Yandex_translator")
 
   private val mongoActor =
     context.spawn(MongoActor(), "mongoActor")
@@ -88,7 +88,7 @@ class GarconActor(context: ActorContext[Update])
     implicit val timeout: Timeout = Timeout(10.seconds)
 
     val translatorResult: Future[TranslationResponse] =
-      translator.ask[TranslationResponse](
+      yandexTranslator.ask[TranslationResponse](
         TranslationRequest(text, languageDirection, _)
       )
 
