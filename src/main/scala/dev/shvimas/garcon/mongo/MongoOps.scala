@@ -68,16 +68,15 @@ trait MongoOps {
       .toFutureOption()
   }
 
-  def addText(text: String,
-              translation: Translation,
+  def addText(translation: Translation,
               langDirection: LanguageDirection,
               chatId: Int): Future[UpdateResult] = {
     getWordsColl(langDirection, chatId)
       .updateOne(
-        filter = equal(CommonTranslationFields.text, text),
+        filter = equal(CommonTranslationFields.text, translation.originalText),
         update = combine(
           set(translation.translatorName, translation.translatedText),
-          set(CommonTranslationFields.text, text)
+          set(CommonTranslationFields.text, translation.originalText)
         ),
         options = upsert
       )

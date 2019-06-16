@@ -1,53 +1,42 @@
 package dev.shvimas.garcon.actors
 
-import akka.actor._
-import dev.shvimas.garcon.actors.MessageSender.SendMessage
+import akka.actor.typed._
+import akka.actor.typed.scaladsl._
+import dev.shvimas.garcon.actors.TranslatorActor.TranslationRequest
 import dev.shvimas.garcon.mongo.model.LanguageDirection
-import dev.shvimas.garcon.telegram.model.Chat
 import dev.shvimas.garcon.translate.abbyy.AbbyyTranslator
+import dev.shvimas.garcon.translate.{Translation, Translator}
 
-import scala.util.{Failure, Success}
+import scala.util.Try
 
 object TranslatorActor {
-  case class TranslationRequest(chat: Chat,
-                                text: String,
-                                languageDirection: LanguageDirection)
-  case class TranslationResponse(chat: Chat,
-                                 text: String,
-                                 translation: String,
-                                 languageDirection: LanguageDirection)
+  case class TranslationRequest(text: String,
+                                languageDirection: LanguageDirection,
+                                respondTo: ActorRef[TranslationResponse])
+
+  case class TranslationResponse(text: String, translation: Try[Translation])
+
+  def abbyyTranslator(): Behavior[TranslationRequest] =
+    Behaviors.setup(new TranslatorActor(_, AbbyyTranslator()))
 }
 
-class TranslatorActor extends Actor with ActorLogging {
+class TranslatorActor(context: ActorContext[TranslationRequest], translator: Translator)
+    extends AbstractBehavior[TranslationRequest] {
   import TranslatorActor._
 
-  private val translator = AbbyyTranslator()
-
-  private val messageSender =
-    context.actorOf(Props[MessageSender], "messageSender")
-
-  override def receive: Receive = {
-    case TranslationRequest(chat, text, languageDirection) =>
-      val tryTranslation =
-        translator.translate(
-          text = text,
-          srcLangCode = languageDirection.source,
-          dstLangCode = languageDirection.target
-        )
-
-      tryTranslation match {
-        case Success(translation) =>
-          messageSender ! SendMessage(
-            chatId = chat.id,
-            text = Some(translation.translatedText)
+  override def onMessage(
+    msg: TranslationRequest
+  ): Behavior[TranslationRequest] = {
+    msg match {
+      case TranslationRequest(text, languageDirection, respondTo) =>
+        val triedTranslation =
+          translator.translate(
+            text = text,
+            srcLangCode = languageDirection.source,
+            dstLangCode = languageDirection.target
           )
-        case Failure(exception) =>
-          messageSender ! SendMessage(
-            chatId = chat.id,
-            text = Some(s"got error while translating: $exception")
-          )
-          log.error(s"$exception")
-      }
-    // TODO: send default menu
+        respondTo ! TranslationResponse(text, triedTranslation)
+    }
+    Behaviors.same
   }
 }

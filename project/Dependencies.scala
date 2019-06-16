@@ -4,7 +4,7 @@ object Version {
   val scala = "2.12.8"
 
   val catsCore = "1.6.0"
-  val akkaActor = "2.5.21"
+  val akkaActor = "2.5.23"
 
   val json4s = "3.6.5"
   val sttpCore = "1.5.11"
@@ -23,7 +23,7 @@ object Dependencies {
     Seq(
       "org.scala-lang" % "scala-reflect" % Version.scala,
       "org.typelevel" %% "cats-core" % Version.catsCore,
-      "com.typesafe.akka" %% "akka-actor" % Version.akkaActor,
+      "com.typesafe.akka" %% "akka-actor-typed" % Version.akkaActor,
       "org.json4s" %% "json4s-native" % Version.json4s,
       "org.json4s" %% "json4s-ext" % Version.json4s,
       "com.softwaremill.sttp" %% "core" % Version.sttpCore,

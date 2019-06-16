@@ -2,7 +2,7 @@ package dev.shvimas.garcon
 
 import java.util.concurrent.TimeUnit
 
-import akka.actor.{ActorSystem, Props}
+import akka.actor.typed._
 import com.typesafe.config.{Config, ConfigFactory}
 import com.typesafe.scalalogging.StrictLogging
 import dev.shvimas.garcon.actors.GarconActor
@@ -16,8 +16,7 @@ import scala.util.{Failure, Success}
 object Main extends App with StrictLogging with MongoOps {
   import MainResources._
 
-  implicit val system: ActorSystem = ActorSystem("GarconBot")
-  val garconActor = system.actorOf(Props[GarconActor], "garconActor")
+  val garconActor = ActorSystem(GarconActor(), "garconActor")
 
   val minAskUpdatesPeriod = config.getInt("bot.min_period")
   val minWorkingDuration = Duration(minAskUpdatesPeriod, TimeUnit.MILLISECONDS)

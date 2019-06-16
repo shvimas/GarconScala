@@ -1,85 +1,119 @@
 package dev.shvimas.garcon.actors
 
-import akka.actor._
+import akka.actor.typed._
+import akka.actor.typed.scaladsl._
+import akka.actor.typed.scaladsl.AskPattern._
+import akka.actor.Scheduler
+import akka.util.Timeout
 import cats.syntax.show._
 import dev.shvimas.garcon.actors.MessageSender.SendMessage
-import dev.shvimas.garcon.actors.TranslatorActor.TranslationRequest
-import dev.shvimas.garcon.mongo.MongoOps
+import dev.shvimas.garcon.actors.MongoActor.GetLanguageDirection
+import dev.shvimas.garcon.actors.TranslatorActor._
 import dev.shvimas.garcon.mongo.model.LanguageDirection
 import dev.shvimas.garcon.telegram.model.Update
 import dev.shvimas.garcon.utils.ExceptionUtils.showThrowable
-import dev.shvimas.garcon.utils.FutureUtils._
 
-import scala.util.{Failure, Success}
+import scala.concurrent.{ExecutionContextExecutor, Future}
+import scala.concurrent.duration._
+import scala.util.{Failure, Success, Try}
 
-class GarconActor extends Actor with ActorLogging with MongoOps {
+object GarconActor {
+  def apply(): Behavior[Update] =
+    Behaviors.setup(new GarconActor(_))
+}
+
+class GarconActor(context: ActorContext[Update])
+    extends AbstractBehavior[Update] {
+
+  private val log = context.log
+
+  private implicit val executor: ExecutionContextExecutor =
+    context.executionContext
+  private implicit val scheduler: Scheduler = context.system.scheduler
+
+  private val messageSender =
+    context.spawn(MessageSender(), "messageSender")
 
   private val translator =
-    context.actorOf(Props[TranslatorActor], "translatorActor")
-  private val messageSender =
-    context.actorOf(Props[MessageSender], "messageSender")
+    context.spawn(TranslatorActor.abbyyTranslator(), "ABBYY_translator")
 
-  override def receive: Receive = {
-    case update @ Update(_, Some(message), None) =>
-      message.text match {
-        case Some(text) =>
-          update.chatId match {
-            case Some(chatId) =>
-              val langDirection: LanguageDirection = getLanguageDirection(chatId).maybeReverse(text)
-              lookUpText(text, langDirection, chatId).awaitResult() match {
-                case Success(None) =>
-                  // FIXME: translator should return value and all communication should be via GarconActor
-                  translator ! TranslationRequest(message.chat, text, langDirection)
-                // TODO: add to DB
-                case Success(Some(commonTranslation)) =>
-                  val translationOrCacheError: Option[String] =
-                    commonTranslation.translation.orElse {
-                      deleteText(commonTranslation.text, langDirection, chatId)
-                      val msg = s"Cache error: no translation found for $text"
-                      log.warning(msg)
-                      Some(msg)
-                    }
-                  messageSender ! SendMessage(chatId, translationOrCacheError)
+  private val mongoActor =
+    context.spawn(MongoActor(), "mongoActor")
 
-                case Failure(exception) =>
-                  log.warning(
-                    s"Failed to get cached translation for $text: got $exception"
-                  )
-                  translator ! TranslationRequest(message.chat, text, langDirection)
-                // TODO: add to DB
-              }
-
-            case None =>
-              log.warning(s"Got $update without chatId")
-          }
-
-        case None =>
-          log.warning(s"Got message ($message) without text")
-      }
-
-    case Update(id, None, Some(callbackQuery)) =>
-      log.info(s"Got $callbackQuery from $id")
+  override def onMessage(msg: Update): Behavior[Update] = {
+    msg match {
+      case Update(_, Some(message), None) =>
+        message.text match {
+          case Some(text) =>
+            msg.chatId match {
+              case Some(chatId) =>
+                respondToMessage(text, chatId)
+              case None =>
+                log.warning(s"Got $msg without chatId")
+            }
+          case None =>
+            log.warning(s"Got message ($message) without text")
+        }
+      case Update(id, None, Some(callbackQuery)) =>
+        log.info(s"Got $callbackQuery from $id")
+      case Update(id, None, None) =>
+        log.warning(s"Got update with neither message nor callback from $id")
+      case update @ Update(id, Some(_), Some(_)) =>
+        log.warning(s"""Got update with both message and callback from $id: 
+             |$update
+             """.stripMargin)
+    }
+    Behaviors.same
   }
 
-  private def getLanguageDirection(chatId: Int): LanguageDirection = {
-    getUserData(chatId).awaitResult() match {
-      case Success(None) =>
-        log.info(
-          s"No user data for $chatId found, setting defaults"
-        )
-        setDefaultUserData(chatId)
-        LanguageDirection.default
-      case Success(Some(userData)) =>
-        userData.languageDirection match {
-          case Some(languageDirection) =>
-            languageDirection
-          case None =>
-            setLangDirection(chatId, LanguageDirection.default)
-            LanguageDirection.default
+  private def respondToMessage(text: String, chatId: Int): Unit = {
+    implicit val timeout: Timeout = Timeout(10.seconds)
+
+    mongoActor
+      .ask[Try[LanguageDirection]](GetLanguageDirection(chatId, _))
+      .onComplete { result: Try[Try[LanguageDirection]] =>
+        result.flatten match {
+          case Success(ld) =>
+            val languageDirection = ld.maybeReverse(text)
+            translate(text, chatId, languageDirection)
+          case Failure(exception) =>
+            logException(exception)
         }
-      case Failure(exception) =>
-        log.warning(s"Got ${exception.show}")
-        LanguageDirection.default
+      }
+  }
+
+  private def translate(text: String,
+                        chatId: Int,
+                        languageDirection: LanguageDirection): Unit = {
+    implicit val timeout: Timeout = Timeout(10.seconds)
+
+    val translatorResult: Future[TranslationResponse] =
+      translator.ask[TranslationResponse](
+        TranslationRequest(text, languageDirection, _)
+      )
+
+    translatorResult.onComplete { result: Try[TranslationResponse] =>
+      val answer: String =
+        result match {
+          case Success(TranslationResponse(_, tried)) =>
+            tried match {
+              case Success(translation) =>
+                translation.translatedText
+              case Failure(exception) =>
+                logException(exception)
+                exception.show
+            }
+          case Failure(exception) =>
+            logException(exception)
+            exception.show
+        }
+
+      messageSender ! SendMessage(chatId, Some(answer))
     }
+  }
+
+  private def logException(exception: Throwable): Unit = {
+    log.error(exception.toString)
+    exception.printStackTrace()
   }
 }
